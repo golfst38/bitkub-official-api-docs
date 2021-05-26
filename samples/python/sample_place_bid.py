@@ -5,8 +5,8 @@ import requests
 
 # API info
 API_HOST = 'https://api.bitkub.com'
-API_KEY = 'YOUR API KEY'
-API_SECRET = b'YOUR API SECRET'
+API_KEY = '1a91c9129b342d2aa3bcd338eff994e0'
+API_SECRET = b'318a7cba295c562c74442c668d97526d'
 
 def json_encode(data):
 	return json.dumps(data, separators=(',', ':'), sort_keys=True)
@@ -29,7 +29,7 @@ header = {
 	'X-BTK-APIKEY': API_KEY,
 }
 data = {
-	'sym': 'THB_BTC',
+	'sym': 'THB_KUB',
 	'amt': 10, # THB amount you want to spend
 	'rat': 260000,
 	'typ': 'limit',
