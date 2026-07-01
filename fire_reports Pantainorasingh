@@ -1,1 +1,126 @@
+{
+  "latitude": 13.5432,
+  "longitude": 100.2345,
+  "imageUrl": "https://firebasestorage...",
+  "timestamp": "2026-07-01T20:15:00Z",
+  "status": "pending" 
+}
+import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'import:path/path.dart' as path;
+import 'dart:io';
 
+void main() => runApp(MaterialApp(home: FireReportApp()));
+
+class FireReportApp extends StatefulWidget {
+  @override
+  _FireReportAppState createState() => _FireReportAppState();
+}
+
+class _FireReportAppState extends State<FireReportApp> {
+  bool _isLoading = false;
+
+  // ฟังก์ชันหลักในการแจ้งเหตุ
+  Future<void> _reportFire() async {
+    setState(() => _isLoading = true);
+
+    try {
+      // 1. ตรวจสอบและขอสิทธิ์ GPS
+      LocationPermission permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) return;
+
+      // 2. ดึงพิกัดปัจจุบัน
+      Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
+
+      // 3. เปิดกล้องให้ถ่ายรูปเหตุการณ์
+      final ImagePicker _picker = ImagePicker();
+      final XFile? image = await _picker.pickImage(source: ImageSource.camera, imageQuality: 50);
+      
+      String imageUrl = "";
+      if (image != null) {
+        // 4. อัปโหลดรูปภาพไปยัง Firebase Storage
+        File file = File(image.path);
+        String fileName = path.basename(image.path);
+        Reference storageRef = FirebaseStorage.instance.ref().child('fire_photos/$fileName');
+        UploadTask uploadTask = storageRef.putFile(file);
+        TaskSnapshot snapshot = await uploadTask;
+        imageUrl = await snapshot.ref.getDownloadURL();
+      }
+
+      // 5. ส่งข้อมูลทั้งหมดไปยัง Firestore
+      await FirebaseFirestore.instance.collection('fire_reports').add({
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+        'imageUrl': imageUrl,
+        'timestamp': FieldValue.serverTimestamp(),
+        'status': 'pending', // pending = รอรับเรื่อง, dispatched = กำลังไป, resolved = จบงาน
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('ส่งข้อมูลแจ้งเหตุเรียบร้อยแล้ว เจ้าหน้าที่กำลังดำเนินการ!'), backgroundColor: Colors.green),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('เกิดข้อผิดพลาด: $e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('ระบบแจ้งเหตุไฟไหม้ฉุกเฉิน'), backgroundColor: Colors.red[800]),
+      body: Center(
+        child: _isLoading
+            ? CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Colors.red))
+            : Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  GestureDetector(
+                    onTap: _reportFire,
+                    child: Container(
+                      width: 220,
+                      height: 220,
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(color: Colors.red.withOpacity(0.4), spreadRadius: 10, blurRadius: 20)
+                        ],
+                      ),
+                      child: Center(
+                        child: Text('กดแจ้งไฟไหม้\n(SOS)', 
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 40),
+                  Text('เมื่อกดปุ่ม ระบบจะส่งพิกัดและเปิดกล้องทันที', style: TextStyle(color: Colors.grey[600], fontSize: 16)),
+                ],
+              ),
+      ),
+    );
+  }
+}
+// ตัวอย่างโค้ดฝั่ง Web ดึงข้อมูล Real-time มาปักหมุดบนแผนที่
+db.collection("fire_reports")
+  .where("status", "==", "pending")
+  .onSnapshot((snapshot) => {
+    snapshot.docChanges().forEach((change) => {
+      if (change.type === "added") {
+        const data = change.doc.data();
+        // ฟังก์ชันสั่งเตือนเสียงไซเรนที่ศูนย์ควบคุม
+        playSirenSound();
+        // ฟังก์ชันปักหมุดลงบน Google Maps API
+        addMarkerToMap(data.latitude, data.longitude, data.imageUrl);
+      }
+    });
+  });
